@@ -61,7 +61,7 @@ function backControl() {
   return h('button', { class: 'text-btn back', type: 'button', onclick: back }, 'Back');
 }
 
-const SCREENS = { home: homeScreen, vote: voteScreen, results: resultsScreen, spin: spinScreen, share: shareScreen };
+const SCREENS = { home: homeScreen, create: createScreen, vote: voteScreen, results: resultsScreen, spin: spinScreen, share: shareScreen };
 
 async function render() {
   state.cleanup?.();
@@ -129,9 +129,111 @@ function liveRefresh(id, onChange) {
 const optionIndex = (poll, id) => poll.options.findIndex((o) => o.id === id);
 const optionById = (poll, id) => poll.options.find((o) => o.id === id);
 
-/* ---------- home: create a decision ---------- */
+/* ---------- home: pick how to decide ---------- */
+
+// Fixed artwork only, never user text, so building it from markup is safe.
+function art(markup) {
+  const span = h('span', { class: 'art', 'aria-hidden': 'true' });
+  span.innerHTML = markup;
+  return span;
+}
+
+const ICONS = {
+  single: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 20V11M12 20V5M18 20v-6"/></svg>',
+  ranked: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h11M4 18h7"/></svg>',
+  swipe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="7" y="3" width="11" height="16" rx="2.5"/><path d="M4.5 7.5v10A2.5 2.5 0 0 0 7 20h7"/></svg>',
+};
+
+// A quarter-cut wheel that peeks in from the corner of the spin card.
+const HERO_WHEEL = `<svg viewBox="0 0 200 200">
+  <circle cx="100" cy="100" r="96" fill="#fff"/>
+  <path d="M100 100V8A92 92 0 0 0 8 100Z" fill="#D81E70"/>
+  <path d="M100 100V8A92 92 0 0 1 192 100Z" fill="#FFC21A"/>
+  <path d="M100 100H8A92 92 0 0 0 100 192Z" fill="#19C79A"/>
+  <path d="M100 100H192A92 92 0 0 1 100 192Z" fill="#fff"/>
+  <circle cx="100" cy="100" r="22" fill="#fff"/>
+  <circle cx="100" cy="100" r="15" fill="#2743E8"/>
+  <path d="M89 0h22l-11 19Z" fill="#fff"/>
+</svg>`;
+
+const MODE_TILES = [
+  { id: 'single', title: 'Pick one', text: 'Everyone gets one vote' },
+  { id: 'ranked', title: 'Rank them', text: 'Put options in order' },
+  { id: 'swipe', title: 'Swipe cards', text: 'Yes or no on each' },
+];
+
+const MODE_NAMES = { single: 'Pick one', ranked: 'Rank them', swipe: 'Swipe cards', spin: 'Spin wheel' };
+
+const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>';
+
+// Shows the mode you'd switch to: a moon in light mode, a sun in dark mode.
+function themeButton() {
+  const button = h('button', { class: 'theme-btn', type: 'button' });
+  const paint = () => {
+    const dark = tg.currentScheme() === 'dark';
+    button.replaceChildren(art(dark ? SUN : MOON));
+    button.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+    button.title = button.getAttribute('aria-label');
+  };
+  button.addEventListener('click', () => { tg.toggleTheme(); tg.haptic.tick(); paint(); });
+  paint();
+  return button;
+}
+
+function startCreate(mode, template) {
+  const { draft } = state;
+  if (template) Object.assign(draft, { question: template.question, options: [...template.options], mode: template.mode });
+  else draft.mode = mode;
+  go({ name: 'create' });
+}
 
 async function homeScreen() {
+  const recent = await api.recent().catch(() => ({ mine: [], chat: [] }));
+
+  const pollList = (items) => h('div', { class: 'poll-list' }, items.map((item) => h('button', {
+    class: 'poll-card',
+    type: 'button',
+    onclick: () => go({ name: item.mode === 'spin' ? 'spin' : 'results', id: item.id }),
+  },
+    h('span', { class: `mode-dot ${item.mode}`, 'aria-hidden': 'true' }),
+    h('span', { class: 'poll-text' },
+      h('span', { class: 'q' }, item.question),
+      h('span', { class: 'sub' }, [MODE_NAMES[item.mode], item.status].filter(Boolean).join(' · '))),
+    h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'))));
+
+  show(
+    h('div', { class: 'topbar' },
+      state.config.dev_mode && !tg.inTelegram && h('p', { class: 'dev-note' }, `Browser test mode, signed in as ${tg.devUser()}.`),
+      themeButton()),
+    recent.chat.length > 0 && [h('h2', { class: 'section', style: 'margin-top:0' }, 'Decisions in this chat'), pollList(recent.chat.slice(0, 3))],
+    h('h1', { style: recent.chat.length ? 'margin-top:28px' : '' }, 'What are we deciding?'),
+    h('button', { class: 'hero spin', type: 'button', onclick: () => startCreate('spin') },
+      h('span', { class: 'hero-text' },
+        h('strong', {}, 'Spin the wheel'),
+        h('span', {}, 'Add options, spin once, and it\'s decided.')),
+      art(HERO_WHEEL)),
+    h('div', { class: 'tiles' }, MODE_TILES.map((m) => h('button', {
+      class: `tile ${m.id}`,
+      type: 'button',
+      onclick: () => startCreate(m.id),
+    },
+      art(ICONS[m.id]),
+      h('strong', {}, m.title),
+      h('span', {}, m.text)))),
+    h('h2', { class: 'section' }, 'Quick starts'),
+    h('div', { class: 'chips' }, TEMPLATES.map((t) => h('button', {
+      class: 'chip',
+      type: 'button',
+      onclick: () => startCreate(null, t),
+    }, t.name))),
+    recent.mine.length > 0 && [h('h2', { class: 'section' }, 'Your polls'), pollList(recent.mine)],
+  );
+}
+
+/* ---------- create: write the question and options ---------- */
+
+async function createScreen() {
   const { draft } = state;
   const error = h('p', { class: 'error', role: 'alert', hidden: true });
 
@@ -185,7 +287,11 @@ async function homeScreen() {
     onchange: (e) => { draft[key] = e.target.checked; },
   }));
 
-  const applyMainLabel = () => tg.setMain(draft.mode === 'spin' ? 'Create wheel' : 'Create poll', submit);
+  const modeHint = h('p', { class: 'hint mode-hint' });
+  const applyMode = () => {
+    modeHint.textContent = MODES.find((m) => m.id === draft.mode).text;
+    tg.setMain(draft.mode === 'spin' ? 'Create wheel' : 'Create poll', submit);
+  };
 
   const submit = async () => {
     error.hidden = true;
@@ -207,42 +313,33 @@ async function homeScreen() {
     render();
   };
 
-  const recent = await api.recent().catch(() => ({ mine: [], chat: [] }));
-  const decisionList = (items) => h('div', { class: 'list' }, items.map((item) => h('button', {
-    class: 'list-item',
-    type: 'button',
-    onclick: () => go({ name: item.mode === 'spin' ? 'spin' : 'results', id: item.id }),
-  },
-    h('span', { class: 'q' }, item.question),
-    h('span', { class: 'state' }, item.closed ? 'Closed' : item.mode === 'spin' ? 'Wheel' : 'Open'))));
+  const modeSwitch = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'How should the group decide?' },
+    MODES.map((m) => h('button', {
+      type: 'button',
+      role: 'radio',
+      'aria-checked': String(draft.mode === m.id),
+      'aria-pressed': String(draft.mode === m.id),
+      onclick: (e) => {
+        draft.mode = m.id;
+        for (const b of modeSwitch.children) {
+          const on = b === e.currentTarget;
+          b.setAttribute('aria-checked', String(on));
+          b.setAttribute('aria-pressed', String(on));
+        }
+        applyMode();
+      },
+    }, m.id === 'spin' ? 'Spin' : m.name)));
 
   show(
-    state.config.dev_mode && !tg.inTelegram && h('p', { class: 'dev-note' }, `Browser test mode, signed in as ${tg.devUser()}.`),
-    recent.chat.length > 0 && [h('h2', { style: 'margin-top:0' }, 'Decisions in this chat'), decisionList(recent.chat.slice(0, 3))],
-    h('h1', { style: recent.chat.length ? 'margin-top:28px' : '' }, 'What are we deciding?'),
+    backControl(),
+    h('h1', {}, 'What are we deciding?'),
     questionInput,
-    h('div', { class: 'chips' }, TEMPLATES.map((t) => h('button', {
-      class: 'chip',
-      type: 'button',
-      onclick: () => {
-        Object.assign(draft, { question: t.question, options: [...t.options], mode: t.mode });
-        render();
-      },
-    }, t.name))),
     h('h2', {}, 'Options'),
     optionsBox,
     addButton,
     h('h2', {}, 'How should the group decide?'),
-    h('div', { class: 'modes' }, MODES.map((m) => h('label', { class: 'mode' },
-      h('input', {
-        type: 'radio',
-        name: 'mode',
-        value: m.id,
-        checked: draft.mode === m.id,
-        onchange: () => { draft.mode = m.id; applyMainLabel(); },
-      }),
-      h('strong', {}, m.name),
-      h('span', {}, m.text)))),
+    modeSwitch,
+    modeHint,
     h('details', {},
       h('summary', {}, 'More settings'),
       toggle('allow_add', 'Let anyone add options'),
@@ -257,9 +354,8 @@ async function homeScreen() {
           selected: draft.close_after_minutes === value,
         }, label))))),
     error,
-    recent.mine.length > 0 && [h('h2', {}, 'Your decisions'), decisionList(recent.mine)],
   );
-  applyMainLabel();
+  applyMode();
 }
 
 /* ---------- vote ---------- */

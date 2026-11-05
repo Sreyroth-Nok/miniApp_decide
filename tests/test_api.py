@@ -281,3 +281,26 @@ def test_prepared_message_success_and_fallback(dara, monkeypatch):
 
     monkeypatch.setattr(telegram, "call", failing_call)
     assert dara.post(url).status_code == 503
+
+
+def test_recent_shows_a_short_status(app, dara, sok):
+    poll = make_poll(dara)
+    url = f"/api/polls/{poll['id']}"
+    pizza, noodles, _ = option_ids(poll)
+    status = lambda person: person.get("/api/recent").get_json()["mine"][0]["status"]  # noqa: E731
+    assert status(dara) == "No votes yet"
+    sok.post(f"{url}/vote", {"choices": [pizza]})
+    assert status(dara) == "Pizza leads"
+    dara.post(f"{url}/vote", {"choices": [noodles]})
+    assert status(dara) == "Tied"
+    wheel = make_poll(dara, mode="spin")
+    mine = dara.get("/api/recent").get_json()["mine"]
+    assert next(p["status"] for p in mine if p["id"] == wheel["id"]) == "Ready to spin"
+
+
+def test_recent_status_hides_the_leader_until_you_vote(app, dara, sok):
+    poll = make_poll(dara)
+    dara.post(f"/api/polls/{poll['id']}/vote", {"choices": [option_ids(poll)[0]]})
+    group = Person(app, 2, "Sok", chat_instance="group-1", chat_type="group")
+    group.get(f"/api/polls/{poll['id']}")
+    assert group.get("/api/recent").get_json()["chat"][0]["status"] == "1 vote · vote to see"

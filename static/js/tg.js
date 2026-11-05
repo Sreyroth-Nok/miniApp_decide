@@ -6,13 +6,58 @@ const supports = (version) => inTelegram && W.isVersionAtLeast(version);
 const params = new URLSearchParams(location.search);
 
 export function setup() {
+  applyTheme();
   if (!inTelegram) return;
   W.ready();
   W.expand();
   if (supports('7.7')) W.disableVerticalSwipes(); // keeps card drags from closing the app
-  const applyTheme = () => { document.documentElement.dataset.theme = W.colorScheme; };
-  applyTheme();
   W.onEvent('themeChanged', applyTheme);
+}
+
+/* Light / dark. With no saved choice the app follows Telegram (or the browser).
+   A saved choice uses the app's own colours and is kept on this device only. */
+const THEME_KEY = 'theme';
+const THEME_BG = { light: '#ffffff', dark: '#14161f' }; // keep in step with --bg in app.css
+
+let chosenTheme = (() => {
+  try {
+    const value = localStorage.getItem(THEME_KEY);
+    return value === 'light' || value === 'dark' ? value : null;
+  } catch { return null; }
+})();
+const savedTheme = () => chosenTheme;
+
+function systemScheme() {
+  if (inTelegram) return W.colorScheme;
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+export const currentScheme = () => savedTheme() || systemScheme();
+
+export function applyTheme() {
+  const chosen = savedTheme();
+  const root = document.documentElement;
+  if (chosen) {
+    root.dataset.theme = chosen;
+    root.dataset.forced = '';
+  } else {
+    delete root.dataset.forced;
+    if (inTelegram) root.dataset.theme = W.colorScheme;
+    else delete root.dataset.theme;
+  }
+  // Match Telegram's header and bottom bar to the page, so there's no odd strip.
+  if (!supports('6.9')) return;
+  W.setHeaderColor(chosen ? THEME_BG[chosen] : 'bg_color');
+  W.setBackgroundColor(chosen ? THEME_BG[chosen] : 'bg_color');
+  if (supports('7.10')) W.setBottomBarColor(chosen ? THEME_BG[chosen] : 'bottom_bar_bg_color');
+}
+
+export function toggleTheme() {
+  const next = currentScheme() === 'dark' ? 'light' : 'dark';
+  chosenTheme = next;
+  try { localStorage.setItem(THEME_KEY, next); } catch { /* still applies for this visit */ }
+  applyTheme();
+  return next;
 }
 
 export const initData = () => (inTelegram ? W.initData : '');

@@ -1,6 +1,6 @@
 /* Telegram supplies --tg-theme-* at runtime. The fallbacks cover plain browsers.
-   Every option has one colour, set inline as --opt / --opt-ink, and it is the only
-   strong colour on screen. */
+   Every option has one colour, set inline as --opt / --opt-ink. On the home screen
+   each voting mode also has a fixed colour, shared by its card and its list dot. */
 :root {
   --bg: var(--tg-theme-bg-color, #ffffff);
   --surface: var(--tg-theme-secondary-bg-color, #eef0f6);
@@ -35,6 +35,30 @@
   --link: var(--tg-theme-link-color, #8ea2ff);
   --accent: var(--tg-theme-button-color, #5470ff);
   --danger: var(--tg-theme-destructive-text-color, #ff6b81);
+}
+
+/* The user's own choice from the theme button wins over Telegram's colours. */
+:root[data-forced][data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #eef0f6;
+  --text: #15172b;
+  --hint: #666a80;
+  --link: #2743e8;
+  --accent: #2743e8;
+  --accent-ink: #ffffff;
+  --danger: #c81e3a;
+  color-scheme: light;
+}
+:root[data-forced][data-theme="dark"] {
+  --bg: #14161f;
+  --surface: #20232f;
+  --text: #f2f3f8;
+  --hint: #a0a4b8;
+  --link: #8ea2ff;
+  --accent: #5470ff;
+  --accent-ink: #ffffff;
+  --danger: #ff6b81;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -157,20 +181,6 @@ textarea.question {
   font-size: 22px;
   line-height: 1;
 }
-.modes { display: grid; gap: 8px; }
-.mode {
-  display: grid;
-  grid-template-columns: 22px 1fr;
-  gap: 2px 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--surface);
-  cursor: pointer;
-}
-.mode input { grid-row: span 2; width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); }
-.mode strong { font-weight: 600; }
-.mode span { grid-column: 2; color: var(--hint); font-size: 14px; }
-.mode:has(input:checked) { box-shadow: inset 0 0 0 2px var(--accent); }
 details { margin-top: 12px; }
 summary { min-height: 44px; display: flex; align-items: center; color: var(--link); font-weight: 600; cursor: pointer; }
 .toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 46px; }
@@ -186,25 +196,102 @@ summary { min-height: 44px; display: flex; align-items: center; color: var(--lin
   font-weight: 600;
   color: var(--hint);
 }
+.segmented button { padding: 4px; line-height: 1.15; }
 .segmented button[aria-pressed="true"] { background: var(--bg); color: var(--text); }
 
-/* lists of decisions */
-.list { display: grid; gap: 2px; }
-.list-item {
+/* home: mode cards. Each mode owns one colour, which also marks its polls below. */
+.hero, .tile {
+  border: 0;
+  text-align: left;
+  transition: transform .12s ease;
+}
+.hero:active, .tile:active { transform: scale(.97); }
+.hero {
+  position: relative;
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
   align-items: center;
   width: 100%;
-  min-height: 52px;
-  padding: 8px 0;
+  min-height: 150px;
+  padding: 22px 18px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: #2743E8;
+  color: #fff;
+}
+.hero-text { position: relative; z-index: 1; display: grid; gap: 6px; max-width: 58%; }
+.hero-text strong { font: 750 clamp(22px, 6.4vw, 27px)/1.1 var(--display); letter-spacing: -0.02em; }
+.hero-text span { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.hero .art {
+  position: absolute;
+  right: -34px;
+  bottom: -62px;
+  width: 172px;
+  height: 172px;
+  transition: transform .5s ease;
+}
+.hero .art svg { display: block; width: 100%; height: 100%; }
+.hero:hover .art { transform: rotate(18deg); }
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-height: 132px;
+  padding: 14px 12px;
+  border-radius: 18px;
+}
+.tile .art { width: 24px; height: 24px; margin-bottom: auto; }
+.tile .art svg { display: block; width: 100%; height: 100%; }
+.tile strong { margin-top: 14px; font: 700 16px/1.15 var(--display); letter-spacing: -0.01em; }
+.tile span:last-child { margin-top: 3px; font-size: 12.5px; font-weight: 500; line-height: 1.25; }
+.tile.single { background: #FFC21A; color: #2B1C00; }
+.tile.ranked { background: #19C79A; color: #04291F; }
+.tile.swipe { background: #D81E70; color: #fff; }
+h2.section { font-size: 17px; margin: 24px 0 10px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; margin: -8px 0 4px; }
+.topbar .dev-note { margin: 0; }
+.theme-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
   border: 0;
-  border-bottom: 1px solid var(--line);
-  background: none;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+}
+.theme-btn .art, .theme-btn svg { display: block; width: 20px; height: 20px; }
+
+/* lists of decisions */
+.poll-list { display: grid; gap: 8px; }
+.poll-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 62px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface);
   text-align: left;
 }
-.list-item .q { min-width: 0; overflow-wrap: anywhere; }
-.list-item .state { flex: none; color: var(--hint); font-size: 14px; }
+.poll-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.poll-text .q { font-weight: 600; overflow-wrap: anywhere; }
+.poll-text .sub { color: var(--hint); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chev { flex: none; color: var(--hint); font-size: 24px; line-height: 1; }
+.mode-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--hint); }
+.mode-dot.single { background: #FFC21A; }
+.mode-dot.ranked { background: #19C79A; }
+.mode-dot.swipe { background: #D81E70; }
+.mode-dot.spin { background: #2743E8; }
+.mode-hint { margin-top: 8px; }
 
 /* voting: option rows */
 .choices { display: grid; gap: 8px; }

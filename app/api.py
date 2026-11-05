@@ -496,12 +496,38 @@ def prepared_message(poll_id):
     return jsonify(id=prepared["id"])
 
 
+def status_line(poll) -> str:
+    """A few words for the home list, such as "Tied" or "Pizza leads".
+
+    It never shows who is ahead to someone who isn't allowed to see results yet.
+    """
+    options = load_options(poll["id"])
+    labels = {o["id"]: o["label"] for o in options}
+    if poll["decided_option_id"]:
+        return f"Decided: {labels.get(poll['decided_option_id'], '')}"
+    if poll["mode"] == "spin":
+        return "Closed" if is_closed(poll) else "Ready to spin"
+
+    ballots = load_ballots(poll["id"])
+    if not ballots:
+        return "Closed" if is_closed(poll) else "No votes yet"
+    if not can_see_results(poll, ballots):
+        count = len(ballots)
+        return f"{count} vote{'' if count == 1 else 's'} · vote to see"
+
+    winners = compute_results(poll, options, ballots)["winners"]
+    if len(winners) != 1:
+        return "Closed · Tied" if is_closed(poll) else "Tied"
+    label = labels[winners[0]]
+    return f"Won: {label}" if is_closed(poll) else f"{label} leads"
+
+
 @bp.get("/recent")
 @require_user
 def recent():
     """Your own decisions, plus the ones opened from the current group chat."""
     db = get_db()
-    summary = "p.id, p.question, p.mode, p.closed_at, p.closes_at"
+    summary = "p.*"
     mine = db.execute(
         f"SELECT {summary} FROM polls p WHERE p.owner_id = ? ORDER BY p.created_at DESC LIMIT 8",
         (g.user.id,),
@@ -521,6 +547,7 @@ def recent():
             "question": row["question"],
             "mode": row["mode"],
             "closed": is_closed(row),
+            "status": status_line(row),
         }
 
     return jsonify(mine=[item(r) for r in mine], chat=[item(r) for r in in_chat])
